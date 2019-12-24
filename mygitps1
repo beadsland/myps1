@@ -1,0 +1,12 @@
+#!/usr/bin/env perl
+
+use warnings;
+use strict;
+use diagnostics;
+
+exit if !$ENV{'GIT_BRANCH'};
+
+my $ps1 = $ENV{'GIT_PS1'};
+$ps1 =~ s/\\[\[\]]//g;
+$ps1 =~ s/\$\{(.*)\}/$ENV{$1}/g;
+print $ps1;

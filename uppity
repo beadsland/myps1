@@ -1,0 +1,38 @@
+#!/usr/bin/env perl
+
+use warnings;
+use strict;
+use diagnostics;
+
+use Unix::Uptime;
+use DateTime::Format::Duration;
+use DateTime::Duration;
+
+my $D = DateTime::Format::Duration->new(normalize => 'ISO');
+
+my $sec = Unix::Uptime->uptime();
+my %norm = $D->normalize( seconds => $sec );
+my $dur = DateTime::Duration->new(%norm);
+
+print result();
+
+sub result {
+  if ($dur->in_units('years')) {
+    return frac('y', 12, $dur->in_units('years', 'months'))
+  } elsif ($dur->in_units('months')) {
+    return frac('m', 30, $dur->in_units('months', 'days'))
+  } elsif ($dur->in_units('days')) {
+    return frac('d', 24, $dur->in_units('days', 'hours'))
+  } elsif ($dur->in_units('hours')) {
+    return frac('h', 60, $dur->in_units('hours', 'minutes'))
+  } elsif ($dur->in_units('minutes')) {
+    return frac('m', 60, $dur->in_units('minutes', 'seconds'))
+  } else {
+    return $dur->in_units('seconds') . 's'
+  }
+}
+
+sub frac {
+  my ($unit, $div, $u1, $u2) = @_;
+  return sprintf("%.1f$unit", $u1 + ($u2 / $div))
+}

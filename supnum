@@ -1,0 +1,22 @@
+#!/usr/bin/env perl
+
+use warnings;
+use strict;
+use diagnostics;
+
+my @supernum = ('⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹');
+
+my %superchr = ('+' => '⁺', '-' => '⁻');
+my $i = 0;
+foreach my $n (@supernum) { $superchr{$i++} = $n }
+
+while (<>) {
+  foreach(split //) {
+    print exists $superchr{$_} ? $superchr{$_} : $_
+  }
+}
+
+sub super {
+  my ($num) = @_;
+  return ($num > 0 ? super(int($num/10)) . utf($supernum[$num % 10]) : "")
+}

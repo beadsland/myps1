@@ -1,0 +1,41 @@
+#!/usr/bin/env perl
+
+use warnings;
+use strict;
+use diagnostics;
+
+use Sys::CPU;
+use Sys::Load qw/getload/;
+use Term::ANSIColor qw(:constants);
+# We favor speed over interpolation.
+## no critic (ProhibitConstantPragma)
+use constant ULINE   => "\e[4m";
+
+use Unicode::String qw/utf8/;
+
+my $cpus = Sys::CPU::cpu_count();
+
+my $i = 0;
+foreach my $l (getload()) {
+  my $n = $l/$cpus;
+
+  unless ($i++ == 0) { print RESET . '﹕' }
+
+  if    ($n < .25) { print WHITE }
+  elsif ($n < .40) { print CYAN }
+  elsif ($n < .60) { print BLUE }
+  elsif ($n < 1.0) { print GREEN }
+  elsif ($n < 1.5) { print YELLOW }
+  elsif ($n < 2.5) { print BOLD.YELLOW }
+  elsif ($n < 4.0) { print BOLD.RED }
+  elsif ($n < 6.0) { print ULINE.BOLD.RED }
+  else             { print BLINK.ULINE.BOLD.RED }
+
+  if ($n < .25)    { print '○' }
+  elsif ($n < .5)  { print '◔' }
+  elsif ($n < .75) { print '◑' }
+  elsif ($n < 1)   { print '◕' }
+  else             { print utf8("")->chr(9311 + $n) }
+}
+
+print "\n";

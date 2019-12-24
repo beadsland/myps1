@@ -1,0 +1,264 @@
+#!/usr/bin/env perl
+
+# Usage (in .bashrc):
+#
+#   # we'll hook into git prompt
+#   GIT_PROMPT_THEME_NAME="Custom"
+#   source ~/.bash-git-prompt/gitprompt.sh
+#   GIT_PROMPT_COMMAND=$PROMPT_COMMAND'; export GIT_PS1="$PS1"'
+#   git_prompt_reset   # Won't run without this. Don't know why.
+#
+#   # our custom prompt
+#   PATH=`echo $HOME/bin/ps1:$PATH`
+#   PROMPT_COMMAND='export LAST_EXIT="$?"; '$GIT_PROMPT_COMMAND'; PS1=`myps1`'
+#   PROMPT_DIRTRIM=3
+#
+#   # reset colors after command
+#   trap 'tput sgr0' DEBUG
+#
+# Requires:
+#   Miscellaneous Symbols and Pictographs (for 📂 and 🖹)
+#   Small Form Variants [Aprhic Kai or Ming] (for ﹫)
+#   magicmonty/bash-git-prompt (GitHub)
+#
+# Bundles with (i.e., also requries):
+#   PS1.pm, mygitps1, nload, uppity, supnum, splines (custom scripts)
+
+use warnings;
+use strict;
+use diagnostics;
+
+use Scalar::Util qw/tainted/;
+use Cwd qw(abs_path);
+use FindBin;
+use lib tainted($ENV{PWD}) ? "$FindBin::Bin"
+                           : abs_path("$FindBin::Bin");
+
+use PS1 qw(ctl_seq os_cmd esc ign utf fw_utf exe tput);
+
+use Term::ANSIColor qw(:constants);
+# We favor speed over interpolation.
+## no critic (ProhibitConstantPragma)
+use constant UNBOLD  => ctl_seq('m', 22);
+use constant ULINE   => ctl_seq('m', 4);
+use constant UNULINE => ctl_seq('m', 24);
+
+use constant PIPE => RESET.WHITE;
+use constant LBKT => ign(PIPE) . utf('❨');
+use constant RBKT => ign(PIPE) . utf('❩');
+use constant JOIN => ign(PIPE) . utf('━');
+use constant JDWN => ign(PIPE) . utf('┏');
+use constant JUPP => ign(PIPE) . utf('┗');
+
+use constant TAPE => utf('\314\205✇');
+
+# print out a PS1
+print title() . esc('n') . activity() . esc('n') . location() . cli();
+
+# functions to set title
+sub title { return ign(set_title(esc('u') . ' - ' . esc('w'))) }
+sub set_title { my ($txt) = @_; return os_cmd(0, $txt) }
+
+sub activity {
+  return JDWN . vpn() .
+                user(CYAN) .
+                drive() .
+                jobs() .
+                load() .
+                node(clock(YELLOW)) .
+                git() .
+                ' ' . status()
+}
+sub location {
+  return JUPP . JOIN . node(path(BOLD.CYAN));
+}
+
+###
+# Activity line
+###
+
+sub vpn {
+  my $pgrep = `pgrep -x openvpn`;
+  if ($pgrep) {
+    my $tun0 = `/sbin/ifconfig | grep tun0`;
+    if ($tun0) {
+      return LBKT . ign(GREEN) . utf('🔒') . RBKT;
+    } else {
+      return LBKT . ign(RED) . utf(' ⃠') . ' vpn failed' . RBKT;
+    }
+  } else {
+    return LBKT . ign(BOLD . YELLOW) . utf('⚠') . ' no vpn' . RBKT;
+  }
+}
+
+sub user {
+  my ($color) = @_;
+  return LBKT .
+         (`id -u` > 0 ? ign(RESET.$color) . esc('u') : root()) .
+         RBKT
+}
+
+sub root {
+  my $bolt = ' ' . ign(BOLD.YELLOW) . utf('⚡') . ' ';
+  return $bolt . ign(BOLD.RED) . 'root' . $bolt . ign(RESET);
+}
+
+sub jobs {
+  my $stop = "STOP=`jobs -s | wc -l`";
+  my $runs = "RUNS=`jobs -r | wc -l`";
+
+  my $scnt = BOLD.RED . utf('■') . '$STOP';
+  my $rcnt = BOLD.GREEN . utf('▭') . '$RUNS';
+
+  my $sind = 'if [ $STOP -gt 0 ]; then echo -n '.$scnt.'; fi';
+  my $rind = 'if [ $RUNS -gt 0 ]; then echo '.$rcnt.'; fi';
+
+  my $then = node(exe("$sind; $rind"));
+
+  my $cond = 'if [ \j -gt 0 ]; then (echo "'.$then.'"); fi';
+
+  return exe("$stop; $runs; $cond")
+}
+
+use Sys::Load;
+use Sys::CPU;
+sub load {
+  my ($l1, $l5, $l15) = Sys::Load::getload();
+  my $avg = ($l1 + $l5 + $l15) / 3;
+  my $nrm = $avg / Sys::CPU::cpu_count();
+
+  if ($nrm > .5) {
+    my $buf = tput('sc') . ( ' ' x (3+(2*2)) ) . tput('rc');
+    return node($buf . ign(exe('nload')));
+  }
+}
+
+sub clock {
+  my ($color) = @_;
+  return ign(GREEN) . utf('⤊') . exe('uppity') .
+         ign(PIPE). utf('⏳') .
+         ign($color) . esc('T')
+}
+
+sub git {
+  my $gitps1 = `mygitps1`;
+  return $gitps1 ? node(exe("echo -e `mygitps1`")) : '';
+}
+
+use constant HUH => ign(BOLD.YELLOW) . utf('‽');
+use constant YEA => ign(BOLD.GREEN) . utf('✔');
+use constant NUH => ign(BOLD.RED) . utf('✘') . ' ' .
+                    ign(UNBOLD.YELLOW) . utf('↵') . ign(RED);
+
+sub status {
+  my $bug = echo(HUH);
+  my $suc = echo(YEA);
+  my $err = echo(NUH . '${LAST_EXIT}');
+
+  my $test = 'if [ ${LAST_EXIT} -eq 0 ];' .
+             "then $suc; else $err; fi";
+  my $code = 'if [ -z ${LAST_EXIT+x} ]; ' .
+             "then $bug; else ($test); fi; " .
+             'unset LAST_EXIT';
+
+  return exe(echo(esc('#')) . '| supnum') . exe($code)
+}
+
+sub echo {
+  my ($txt) = @_;
+  return 'echo "' . $txt . '"';
+}
+
+###
+# Location line
+###
+
+use Scalar::Util qw(looks_like_number);
+
+sub drive {
+#  my $grep = "egrep 'google-drive|rclone' | grep -v grep";
+  my $pgrep = "(pgrep rclone; pgrep google-drive)";
+  my $xargs = 'xargs -I {} sh -c "/usr/bin/top -n1 -bp {} | tail -n +8"';
+  my $busy = `$pgrep | $xargs | awk '{ printf "%.1f\\n", \$9 }' | sort -r`;
+  $busy = ( split /\n/, $busy)[0];
+#  my $busy = "";
+#print `$pgrep | $xargs`;
+#print $busy;
+
+  # TODO: figure out why getting version number not cpu usage
+  $busy = looks_like_number($busy) ? $busy : 0; # force numeric if no result
+  my $color = '';
+
+  if ($busy < 1)     { return '' }
+  elsif ($busy < 0) { $color = WHITE }
+  elsif ($busy < 10) { $color = CYAN }
+  elsif ($busy < 30) { $color = BLUE }
+  elsif ($busy < 50) { $color = GREEN }
+  elsif ($busy < 70) { $color = YELLOW }
+  elsif ($busy < 90) { $color = RED }
+  else               { $color = BOLD.RED }
+
+  return node(TAPE . TAPE . $busy . '%', $color)
+} #
+
+sub path {
+  my ($color) = @_;
+  return ign(BOLD.BLUE) . utf('📂') . ' ' .
+         ign(RESET.$color) . esc('w') . ' ' .
+         shortbreak() .
+         ign(RESET.PIPE) . utf('⇶') . ' ' .
+         ign(RESET.$color.UNBOLD) . files() .
+         ign(BOLD) . utf('🖹') . utf('ₛ') .
+         ign(RESET.PIPE) . fw_utf('﹫') .
+         ign(RESET.$color.UNBOLD) . size() . ' ' .
+         ign(RESET.PIPE) . utf('✎') 
+#         ign(RESET.GREEN) . exe("timeout --kill-after=1 1 echo `splines`");
+}
+
+sub shortbreak {
+  my $cols = `tput cols`;
+  my $pwdl = `echo dirs | bash | wc -c`;
+  return (($cols - $pwdl) < 50) ? '\n      ' : ''
+}
+
+sub files {
+  # http://stackoverflow.com/questions/24169506/how-can-i-count-the-hidden-files-in-a-directory-using-a-shell-script
+  # miscounts zero files as a single filed called "*"
+  my $files = 'files=(*); echo ${#files[@]}';
+  my $hides = 'hidden=(.*); echo $((${#hidden[@]} -2))';
+
+
+  my $condl = ' if [ $h -ne "0" ]; then echo +$h | supnum; fi';
+  my $suphd = "h=`${hides}`; $condl";
+
+  return exe($files) . ign(UNBOLD.ULINE) . exe($suphd) . ign(UNULINE);
+}
+
+
+# ls -lah is zombifying for unknown reasons
+sub size {
+  # Get a Broken Pipe error from ls unless we gobble all its output.
+  my $GREP = '(grep -m 1 total; cat >/dev/null)';
+#  return exe("ls -lah | $GREP | " . 'sed "s/total //"');
+  return "";
+  #return exe("trap '' SIGPIPE; " .
+  #           '(ls -lah | sed "s/total //" | head -1)');
+}
+
+###
+# Command line
+###
+
+# Pair with a `trap 'tput sgr0' DEBUG` in .bashrc.
+sub cli { return ign(RESET) . ' $ ' . ign(BOLD.WHITE) }
+
+###
+# Helper functions
+###
+
+sub node {
+  my ($str, $color) = @_;
+  return JOIN . LBKT .
+         ($color ? ign($color) : '') . $str .
+         RBKT;
+}

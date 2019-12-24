@@ -1,0 +1,39 @@
+#/usr/bin/env bash
+
+FIND="find -type d -name .git -prune -o -type f -exec grep -Iq . {} + -and -print"
+WC="xargs wc -l"
+
+TIMEOUT="timeout --kill-after=1 1"
+
+# the cat(<cat -) nonsense resolves cases where only only one file
+# (otherwise, wc won't return a total)
+
+# the cat >/dev/null nonsense resolves bash throwing gratuitous
+# broken pipe errors
+
+# globstar doesn't do what we want it to do because relative paths
+
+sedCmd() { 
+	sed 's/\*//g' 
+}
+
+LINES=`$TIMEOUT $FIND 2>&1 \
+    | grep -vZf <(shopt -s globstar; grep -sv "^$" **/.gitignore | sedCmd) \
+    | cat <(cat -) <(echo .) \
+    | $WC 2>&1 \
+    | (grep -m 1 total; cat >/dev/null) \
+    | sed 's/total//'`
+
+if [ -z $LINES ]; then
+  if [[ $(find . -type f -print -quit) ]]; then
+    echo "???"
+  else
+    echo "0"
+  fi
+elif [ $LINES -lt 1000 ]; then
+  echo $LINES
+elif [ $LINES -lt 1000000 ]; then
+  echo $(($LINES/1000))"k"
+else
+  echo $(($LINES/1000000))"m"
+fi
