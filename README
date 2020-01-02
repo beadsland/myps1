@@ -1,0 +1,5 @@
+TODO:
+   Default behavior on failure
+   Install instructions
+   Sys::CPU is only available from backports
+   Error messages on new empty git repo
